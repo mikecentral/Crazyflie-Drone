@@ -10,6 +10,8 @@ import numpy as np
 from udacidrone import Drone
 from udacidrone.connection import MavlinkConnection, WebSocketConnection  # noqa: F401
 from udacidrone.messaging import MsgID
+from udacidrone.connection import CrazyflieConnection
+
 
 class States(Enum):
 
@@ -58,6 +60,9 @@ class BackyardFlyer(Drone):
         3. If landing, transition to DISARMING once drone lands
         """
 
+        if self.flight_state == States.MANUAL:  # this is added for Crazyflie
+            self.takeoff_transition()
+
         if self.flight_state == States.TAKEOFF:
             # check if drone altitude is within 5% of target altitude
             if -1.0 * self.local_position[2] > 0.95 * self.target_position[2]:
@@ -79,7 +84,11 @@ class BackyardFlyer(Drone):
 
     def velocity_callback(self):
         
-        pass  # we do not want to trigger the disarming transition in the Aero
+        # this is special for Crazyflie
+        if self.flight_state == States.LANDING:
+            if abs(self.local_position[2] < 0.01):
+                self.manual_transition()
+
 
         """
         This triggers when `MsgID.LOCAL_VELOCITY` is received and self.local_velocity contains new data
@@ -97,30 +106,21 @@ class BackyardFlyer(Drone):
     def state_callback(self):
         if self.in_mission:
             if self.flight_state == States.MANUAL:
-                # now just passively waiting for the pilot to change these attributes
-                # once the pilot changes, need to update our internal state
-                if self.guided:
-                    self.flight_state = States.ARMING
+                self.arming_transition()
             elif self.flight_state == States.ARMING:
                 if self.armed:
                     self.takeoff_transition()
-            elif self.flight_state == States.LANDING:
-                # check if the pilot has changed the armed and control modes
-                # if so (and the script no longer in control) stop the mission
-                if not self.armed and not self.guided:
-                    self.stop()
-                    self.in_mission = False
             elif self.flight_state == States.DISARMING:
-                # no longer want the vehicle to handle the disarming and releasing control
-                # that will be done by the pilot
-                pass
+                if not self.armed and not self.guided:
+                    self.manual_transition()
 
 
 
     def calculate_box(self):
         print("Setting Home")
-        cp = np.array([self.local_position[0], self.local_position[1], -self.local_position[2]])  # get the current local position -> note we need to change the sign of the down coordinate to be altitude
-        local_waypoints = [cp + [10.0, 0.0, 3.0], cp + [10.0, 10.0, 3.0], cp + [0.0, 10.0, 3.0], [0.0, 0.0, 3.0]]
+        cp = self.local_position
+        cp[2] = 0
+        local_waypoints = [cp + [2.0, 0.0, 0.5], cp + [2.0, 2.0, 0.5], cp + [0.0, 2.0, 0.5], cp + [0.0, 0.0, 0.5]]
         return local_waypoints
 
 
@@ -148,7 +148,7 @@ class BackyardFlyer(Drone):
 
         print("takeoff transition")
 
-        target_altitude = 3.0
+        target_altitude = 0.5
 
         self.target_position[2] = target_altitude
         # 2. Command a takeoff to 3.0m
@@ -225,7 +225,7 @@ if __name__ == "__main__":
 
 #    conn = MavlinkConnection('tcp:127.0.0.1:5760', threaded=False, PX4=False)
 
-    conn = MavlinkConnection('udp:192.168.1.2:14550', PX4=True, threaded=False) # insert actual IP address of wireless adapter
+    conn = CrazyflieConnection('radio://0/80/2M')  # this is the funky Crazyflie USB antenna radio://interface id/interface channel/interface speed
 
     drone = BackyardFlyer(conn)
 
