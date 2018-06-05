@@ -50,10 +50,10 @@ class KeyboardDrone:
         if key.char == 'c':
             self.mc.start_down(self.velocity)
 
-        if key == keyboard.Key.space:
+        if key.char == 'v':
             self.mc.start_up(self.velocity)
 
-        if key.char == 'l':
+        if key.char == 'k':
             print('Kill engines')
             return False
 
